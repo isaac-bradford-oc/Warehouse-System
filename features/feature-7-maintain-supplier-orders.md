@@ -1,88 +1,54 @@
-# Feature: Maintain Supplier Orders
+# Feature 7: Maintain Supplier Orders
 
-**Feature ID:** 7
-**Branch pattern:** `feature/7-maintain-supplier-orders`
-**Status:** Ready
-**Created:** 2026-09-19
-**Input:** Keep a record of supplier orders. Send and receive those orders.
-**Depends on:** — [Feature 1 — Maintain Companies](feature-1-maintain-companies.md), [Feature 2 — Maintain Warehouses](feature-2-maintain-warehouses.md), [Feature 6 — Maintain Suppliers](feature-6-maintain-suppliers.md), [Feature 11 — Maintain Reports](feature-11-maintain-reports.md)
+**Feature ID:** 7  
+**Branch pattern:** `feature/7-maintain-supplier-orders`  
+**Status:** Ready  
+**Created:** 2026-09-19  
+**Last Updated:** 2026-11-10  
+**Input:** Manage the lifecycle, line items, and electronic transmission of supplier purchase orders.  
+**Depends on:** [Feature 1 — Maintain Companies](feature-1-maintain-companies.md), [Feature 2 — Maintain Warehouses](feature-2-maintain-warehouses.md), [Feature 3 — Maintain Items](feature-3-maintain-items.md), [Feature 6 — Maintain Suppliers](feature-6-maintain-suppliers.md)  
 
 ---
 
 ## User Stories
 
-### US-7.1: Add order
-**As a** office manager
-**I want** to make a new order
-**So that** the company can order low quantity items for warehouses 
+### US-7.1: Create Supplier Purchase Order (Draft)
+**As an** office manager  
+**I want to** create a new purchase order draft for a supplier with specified items and case quantities  
+**So that** the warehouse can formally request inventory replenishment from vendors  
 
-**Priority:** P1
-**Independent test:** Create a new order and preview the order on a webpage
-**Acceptance scenarios:** see ### US-7.1 under Acceptance Criteria
+* **Priority:** P1  
+* **Independent test:** Create a purchase order in draft status with multiple line items; verify header and line items persist with calculated totals.  
+* **Acceptance scenarios:** see [US-7.1](#us-71--create-supplier-purchase-order-draft) under Acceptance Criteria.
 
-### US-7.2: Edit order
-**As a** office manager
-**I want** to edit an order
-**So that** it is possible to make revisions to an order before it is sent
+### US-7.2: Edit Supplier Order
+**As an** office manager  
+**I want to** modify order line items, quantities, or expected delivery date on a draft order  
+**So that** order details can be revised prior to official submission to the supplier  
 
-**Priority:** P1
-**Independent test:** Edit an existing order and preview the order on a webpage
-**Acceptance scenarios:** see ### US-7.2 under Acceptance Criteria
+* **Priority:** P1  
+* **Independent test:** Change line item quantities on a draft order; verify recalculated order totals persist.  
+* **Acceptance scenarios:** see [US-7.2](#us-72--edit-supplier-order) under Acceptance Criteria.
 
-### US-7.3: Delete order
-**As a** office manager
-**I want** to delete an order
-**So that** incorrect orders are not sent by accident
+### US-7.3: Submit / Send Order to Supplier
+**As an** office manager  
+**I want to** submit and electronically dispatch an approved purchase order to the vendor  
+**So that** the supplier initiates manufacturing and shipping of the requested items  
 
-**Priority:** P1
-**Independent test:** Remove an order and see that it is not on the orders webpage
-**Acceptance scenarios:** see ### US-7.3 under Acceptance Criteria
+* **Priority:** P1  
+* **Independent test:** Submit a valid draft order meeting supplier minimum order thresholds; verify status transitions to `"SUBMITTED"` and electronic notification/EDI payload is dispatched.  
+* **Acceptance scenarios:** see [US-7.3](#us-73--submit--send-order-to-supplier) under Acceptance Criteria.
 
-### US-7.4: Send order
-**As a** office manager
-**I want** to send an order to a supplier
-**So that** needed items are ordered
+### US-7.4: Cancel / Delete Supplier Order
+**As an** office manager  
+**I want to** cancel an active purchase order or delete an unsubmitted draft  
+**So that** erroneous orders are cancelled with the supplier and warehouse expectations are updated  
 
-**Priority:** P1
-**Independent test:** Send an order and see that the order form is sent to the supplier
-**Acceptance scenarios:** see ### US-7.4 under Acceptance Criteria
+* **Priority:** P1  
+* **Independent test:** Cancel an open submitted order; verify status transitions to `"CANCELLED"` and items are removed from warehouse expected incoming balances.  
+* **Acceptance scenarios:** see [US-7.4](#us-74--cancel--delete-supplier-order) under Acceptance Criteria.
 
-### US-7.5: Receieve Bill of Lading
-**As a** stocker
-**I want** to scan Bill of Lading into the system
-**So that** the corresponding order is updated to reflect the received items
-
-**Priority:** P1
-**Independent test:** Scan Bill of Lading and view it on the corresponding order's webpage
-**Acceptance scenarios:** see ### US-7.5 under Acceptance Criteria
-
-### US-7.6: Log damaged/missing items
-**As a** stocker
-**I want** to log damaged and/or missing items
-**So that** office managers and the system know to order more of the damaged/missing product
-**And** that the supplier is notified
-
-**Priority:** P1
-**Independent test:** Stocker marks item on the order as damaged/missing and office manager sees the updated order form 
-**Acceptance scenarios:** see ### US-7.6 under Acceptance Criteria
-
-### US-7.7: Auto-order low items
-**As a** automated process
-**I want** order items when their quantity is below a calculated threshold
-**So that** the inventory is kept adequately stocked for orders
-
-**Priority:** P1
-**Independent test:** Item quantity goes below minimum target and system auto-orders that item up to its maximum target quantity
-**Acceptance scenarios:** see ### US-7.7 under Acceptance Criteria
-
-### US-7.8: Stock order
-**As a** driver
-**I want** to mark an order as ready to be stocked
-**So that** stockers are notified
-
-**Priority:** P1
-**Independent test:** Mark an order as ready for stocking and view its status on the orders webpage
-**Acceptance scenarios:** see ### US-7.8 under Acceptance Criteria
+*(Note: Real-world physical operations have been separated into dedicated operational features: [Feature 12 — Auto-Generate Supplier Orders](feature-12-auto-generate-supplier-orders.md) for automated min-max replenishment, [Feature 13 — Receive Supplier Shipments](feature-13-receive-supplier-shipments.md) for truck arrival and dock receiving, and [Feature 14 — Putaway and Stock Inventory](feature-14-putaway-and-stock-inventory.md) for stocking into bins).*
 
 ---
 
@@ -90,147 +56,129 @@
 
 ### Functional Requirements
 
-- **FR-001**: System MUST receive and parse Bill of Lading images.
-- **FR-002**: System MUST automatically order items up to their calculated maximum quantity when their current quantitiy goes below their calculated minimum quantity. 
-- **FR-003**: System MUST validate user form input before saving to database.
-- **FR-004**: System MUST provide the user with visual confirmation of action taken after attempting to save input.
+- **FR-001**: System MUST allow office managers to create, view, update, submit, and cancel purchase orders.
+- **FR-002**: Every order MUST be associated with a valid `company_id`, target `warehouse_id`, `supplier_id`, and authorizer (`worker_id`).
+- **FR-003**: Orders MUST follow a strict lifecycle state machine: `DRAFT` -> `SUBMITTED` -> `PARTIALLY_RECEIVED` -> `RECEIVED` -> `CLOSED` (or `CANCELLED`).
+- **FR-004**: Orders in status `SUBMITTED`, `PARTIALLY_RECEIVED`, `RECEIVED`, or `CLOSED` MUST NOT allow line item addition or deletion.
+- **FR-005**: System MUST validate that an order contains at least one line item with `quantity_ordered > 0` before submission.
+- **FR-006**: System MUST enforce that the order total meets or exceeds the supplier's `min_order_amount` before allowing submission.
+- **FR-007**: System MUST generate a unique, non-repeating `order_number` (e.g., `PO-202611-0001`).
+- **FR-008**: System MUST display unambiguous confirmation and actionable validation errors.
 
 ---
 
 ## Key Entities
 
-- **Supplier Order**: supplier order with Warehouse, Supplier, Order Date, and Authorizor.
+- **Supplier Order**: Purchase order header tracking PO number, destination warehouse, supplier, creation date, expected delivery date, authorizer, total cost, and status (`DRAFT` | `SUBMITTED` | `PARTIALLY_RECEIVED` | `RECEIVED` | `CLOSED` | `CANCELLED`).
+- **Supplier Order Item**: Individual line item associating an item SKU, ordered case count, case cost, and received quantity count.
 
 ---
 
 ## Data Model Requirements
 
-### supplierOrders
+### `supplier_orders`
 
-| Column | Notes |
-|--------|-------|
-| id | PK |
-| warehouse | nvarchar(100), required |
-| supplier | nvarchar(100), required |
-| orderDate | date, required |
-| authorizer | nvarchar(100), required |
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | INT / BIGINT | PK, AUTO_INCREMENT | Unique internal order ID |
+| `order_number` | VARCHAR(30) | NOT NULL, UNIQUE | Human-readable PO number |
+| `company_id` | INT / BIGINT | FK -> `companies(id)`, NOT NULL | Owning tenant company |
+| `warehouse_id` | INT / BIGINT | FK -> `warehouses(id)`, NOT NULL | Receiving destination facility |
+| `supplier_id` | INT / BIGINT | FK -> `suppliers(id)`, NOT NULL | Vendor fulfilling order |
+| `authorizer_worker_id`| INT / BIGINT | FK -> `workers(id)`, NOT NULL | Office manager approving PO |
+| `order_date` | DATE | NOT NULL | Date PO was generated |
+| `expected_date` | DATE | NOT NULL | Estimated arrival date |
+| `total_amount` | DECIMAL(10,2) | NOT NULL, DEFAULT 0.00 | Sum of line item extended costs |
+| `status` | VARCHAR(30) | NOT NULL, DEFAULT `'DRAFT'` | Enum: `'DRAFT'`, `'SUBMITTED'`, `'PARTIALLY_RECEIVED'`, `'RECEIVED'`, `'CLOSED'`, `'CANCELLED'` |
+| `created_at` | TIMESTAMP | NOT NULL, DEFAULT NOW() | Timestamp created |
+| `updated_at` | TIMESTAMP | NOT NULL, DEFAULT NOW() | Timestamp updated |
+
+### `supplier_order_items`
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | INT / BIGINT | PK, AUTO_INCREMENT | Unique line item ID |
+| `order_id` | INT / BIGINT | FK -> `supplier_orders(id)`, NOT NULL | Parent purchase order |
+| `item_id` | INT / BIGINT | FK -> `items(id)`, NOT NULL | Ordered catalog item SKU |
+| `quantity_ordered` | INT | NOT NULL, CHECK (quantity_ordered > 0) | Quantity in cases ordered |
+| `quantity_received`| INT | NOT NULL, DEFAULT 0, CHECK (quantity_received >= 0) | Cumulative cases received at dock |
+| `case_cost` | DECIMAL(10,2) | NOT NULL, CHECK (case_cost >= 0) | Cost per case locked at order creation |
+
+* **Unique Index:** `(order_id, item_id)`
 
 ---
 
 ## Acceptance Criteria (Gherkin)
 
-### US-7.1 — Add order
+### US-7.1 — Create supplier purchase order (Draft)
 
-#### Scenario: User adds order successfully
-* **Given** an office manager fills in the "add order" form with acceptable information
-* **When** the user saves the form
-* **Then** the system saves the form to the database
-* **And** the user receives visual confirmation
+#### Scenario: Successfully create a draft purchase order with line items
+* **Given** supplier "Acme Beverage Supply" (ID `10`) exists with minimum order $250.00
+* **And** item "DRK-COLA-01" (ID `101`, case cost $12.50) is supplied by vendor `10`
+* **When** the office manager creates a new supplier order for warehouse "DAL-01"
+* **And** adds line item: Item ID `101`, Quantity `25` cases ($312.50 total)
+* **And** saves the order as draft
+* **Then** the system creates `supplier_orders` record in status `"DRAFT"` with `total_amount` = 312.50
+* **And** displays confirmation "Purchase Order PO-202611-0001 saved as Draft"
 
-#### Scenario: User inputs invalid information into the form
-* **Given** an office manager fills in the "add order" form with invalid information
-* **When** the user saves the form
-* **Then** the system throws an exception
-* **And** the user receives visual confirmation
+#### Scenario: Attempt to create order with items from a different supplier
+* **Given** item "SNK-CHIP-05" is supplied by vendor "Frito Snack Co" (ID `20`)
+* **When** the office manager attempts to add "SNK-CHIP-05" to an order for "Acme Beverage Supply" (ID `10`)
+* **Then** the system rejects the line item
+* **And** displays an error message "Item SNK-CHIP-05 does not belong to supplier Acme Beverage Supply"
 
-### US-7.2 — Edit order
+---
 
-#### Scenario: User edits order successfully
-* **Given** an office manager fills in the "edit order" form with acceptable information
-* **When** the user saves the form
-* **Then** the system saves the form to the database
-* **And** the user receives visual confirmation
+### US-7.2 — Edit supplier order
 
-#### Scenario: User inputs invalid information into the form
-* **Given** an office manager fills in the "edit order" form with invalid information
-* **When** the user saves the form
-* **Then** the system throws an exception
-* **And** the user receives visual confirmation
+#### Scenario: Successfully update quantities on a draft order
+* **Given** order "PO-202611-0001" is in status `"DRAFT"` with 25 cases of item "DRK-COLA-01"
+* **When** the office manager changes quantity to 30 cases
+* **And** saves the update
+* **Then** the system updates `quantity_ordered` to 30
+* **And** recalculates `total_amount` to $375.00
+* **And** displays confirmation "Order updated successfully"
 
-### US-7.3 — Delete order
+#### Scenario: Prevent editing an order that has already been submitted
+* **Given** order "PO-202611-0001" is in status `"SUBMITTED"`
+* **When** the office manager attempts to edit line item quantities
+* **Then** the system locks the fields against editing
+* **And** displays an error message "Cannot edit purchase order: Order has already been submitted to vendor"
 
-#### Scenario: User deletes order successfully
-* **Given** an office manager clicks the "delete order" button
-* **When** the user saves the form
-* **Then** the system saves the form to the database
-* **And** the user receives visual confirmation
+---
 
-#### Scenario: User inputs invalid information into the form
-* **Given** an office manager clicks the "delete order" button
-* **When** the user saves the form
-* **Then** the system throws an exception
-* **And** the user receives visual confirmation
+### US-7.3 — Submit / Send order to supplier
 
-### US-7.4 — Send order
+#### Scenario: Successfully submit an order meeting vendor requirements
+* **Given** draft order "PO-202611-0001" has a total value of $375.00 (exceeding vendor min order $250.00)
+* **When** the office manager clicks "Submit Order to Vendor"
+* **And** confirms submission
+* **Then** the system updates order status to `"SUBMITTED"`
+* **And** transmits purchase order EDI/email to vendor "orders@acmebev.com"
+* **And** displays confirmation "Order PO-202611-0001 submitted to Acme Beverage Supply"
 
-#### Scenario: User sends order successfully
-* **Given** the order exists and has necessary information
-* **When** an office manager clicks the "send order" button
-* **Then** the system sends the order to the supplier
-* **And** the user receives visual confirmation
+#### Scenario: Prevent submitting order below vendor minimum spend threshold
+* **Given** supplier "Acme Beverage Supply" requires a minimum order of $250.00
+* **And** draft order "PO-202611-0002" contains 10 cases totaling $125.00
+* **When** the office manager attempts to submit the order
+* **Then** the system rejects the submission
+* **And** displays an error message "Order total ($125.00) is below supplier minimum order threshold of $250.00"
+* **And** the order remains in `"DRAFT"` status
 
-#### Scenario: User sends duplicate order
-* **Given** the order exists and has necessary information and has already been sent
-* **When** an office manager clicks the "send order" button
-* **Then** the system sends a duplicate order to the supplier
-* **And** the user receives visual confirmation
+---
 
-### US-7.5 — Receive Bill of Lading
+### US-7.4 — Cancel / Delete supplier order
 
-#### Scenario: User scans Bill of Lading successfully
-* **Given** the Bill of Lading has necessary information
-* **When** a stocker scans the Bill of Lading with a mobile device's camera
-* **Then** the system receives the Bill of Lading
-* **And** the system updates the order with Bill of Lading information
-* **And** the user receives visual confirmation
+#### Scenario: Successfully cancel a submitted order
+* **Given** order "PO-202611-0001" is in status `"SUBMITTED"` with zero received items
+* **When** the office manager selects "Cancel Order" with reason "Vendor out of stock"
+* **And** confirms cancellation
+* **Then** the system updates order status to `"CANCELLED"`
+* **And** sends cancellation notice to the vendor
+* **And** displays confirmation "Order PO-202611-0001 has been cancelled"
 
-#### Scenario: User scans duplicate Bill of Lading
-* **Given** the Bill of Lading has necessary information
-* **When** a stocker scans the Bill of Lading with a mobile device's camera for a second time
-* **Then** the system receives the Bill of Lading
-* **And** the system updates the order with duplicate Bill of Lading information
-* **And** the user receives visual confirmation
-
-### US-7.6 — Log damaged/missing items
-
-#### Scenario: User logs items successfully
-* **Given** the corresponding order exists
-* **When** a stocker marks an order item as damaged or missing
-* **Then** the system updates the order
-* **And** management is sent a report
-* **And** the user receives visual confirmation
-
-#### Scenario: User logs duplicate items
-* **Given** the corresponding order exists
-* **When** a stocker marks an order item as damaged or missing for a second time
-* **Then** the system updates the order with duplicate information
-* **And** management is sent a report
-* **And** the user receives visual confirmation
-
-### US-7.7 — Auto-order low items
-
-#### Scenario: System auto-orders items successfully
-* **Given** the specified items are below their minimum target quantity
-* **When** the system creates an auto-order
-* **Then** the system sends the order to the supplier
-
-#### Scenario: Item quantity is inaccurate
-* **Given** the specified items are reported below their minimum target quantity, but their actual quantity is higher
-* **When** the system creates an auto-order
-* **Then** the system sends the order to the supplier for too much of the specified items
-
-### US-7.8 — Stock order
-
-#### Scenario: User marks order as ready for stocking successfully
-* **Given** the corresponding order exists with Bill of Lading
-* **When** a driver marks an order item as ready for stocking
-* **Then** the system updates the order in the database/website
-* **Then** the system notifies stockers
-* **And** the user receives visual confirmation
-
-#### Scenario: User marks order as ready for stocking a second time
-* **Given** the corresponding order exists and is marked as ready for stocking
-* **When** a driver marks an order item as ready for stocking for a second time
-* **Then** the system updates the order in the database/website
-* **Then** the system notifies stockers again
-* **And** the user receives visual confirmation
+#### Scenario: Prevent cancelling order that has already been partially received at dock
+* **Given** order "PO-202611-0001" is in status `"PARTIALLY_RECEIVED"`
+* **When** the office manager attempts to cancel the order
+* **Then** the system rejects the cancellation
+* **And** displays an error message "Cannot cancel order: shipments have already been received at the loading dock. Process dock returns instead"
