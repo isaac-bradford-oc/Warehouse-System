@@ -48,8 +48,6 @@
 * **Independent test:** Cancel an open submitted order; verify status transitions to `"CANCELLED"` and items are removed from warehouse expected incoming balances.  
 * **Acceptance scenarios:** see [US-7.4](#us-74--cancel--delete-supplier-order) under Acceptance Criteria.
 
-*(Note: Real-world physical operations have been separated into dedicated operational features: [Feature 12 — Auto-Generate Supplier Orders](feature-12-auto-generate-supplier-orders.md) for automated min-max replenishment, [Feature 13 — Receive Supplier Shipments](feature-13-receive-supplier-shipments.md) for truck arrival and dock receiving, and [Feature 14 — Putaway and Stock Inventory](feature-14-putaway-and-stock-inventory.md) for stocking into bins).*
-
 ---
 
 ## Requirements
@@ -64,6 +62,104 @@
 - **FR-006**: System MUST enforce that the order total meets or exceeds the supplier's `min_order_amount` before allowing submission.
 - **FR-007**: System MUST generate a unique, non-repeating `order_number` (e.g., `PO-202611-0001`).
 - **FR-008**: System MUST display unambiguous confirmation and actionable validation errors.
+
+---
+
+## Data Ownership & Isolation
+
+Supplier purchase orders belong to the tenant company and destination warehouse.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/supplier-orders` returns orders where `company_id = req.user.companyId` and `warehouse_id = req.user.warehouseId`. |
+| **Write scope** | Editing is permitted only for orders matching `req.user.companyId` and currently in `DRAFT` status. |
+| **Create scope** | New orders automatically associate with `req.user.companyId` and authorizer `req.user.id`. |
+| **Cross-user access** | Accessing a purchase order belonging to another tenant or warehouse returns `404 Not Found`. |
+| **UI scope** | Users only see purchase orders targeted for their authorized facility. |
+| **Implementation** | Centralized query helper `getAccessibleSupplierOrderOrNull(req, orderId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/supplier-orders` | Yes | `office manager`, `company admin` | List purchase orders |
+| `GET` | `/warehouse/supplier-orders/:id` | Yes | `office manager`, `company admin` | Get order and line items |
+| `POST` | `/warehouse/supplier-orders` | Yes | `office manager`, `company admin` | Create draft purchase order |
+| `PUT` | `/warehouse/supplier-orders/:id` | Yes | `office manager`, `company admin` | Update line items on draft |
+| `POST` | `/warehouse/supplier-orders/:id/submit` | Yes | `office manager`, `company admin` | Submit PO to vendor |
+| `POST` | `/warehouse/supplier-orders/:id/cancel` | Yes | `office manager`, `company admin` | Cancel purchase order |
+
+**Create Request Body (`POST /warehouse/supplier-orders`):**
+```json
+{
+  "warehouse_id": 2,
+  "supplier_id": 10,
+  "expected_date": "2026-11-20",
+  "items": [
+    {
+      "item_id": 101,
+      "quantity_ordered": 25,
+      "case_cost": 12.50
+    }
+  ]
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 15,
+  "order_number": "PO-202611-0001",
+  "company_id": 1,
+  "warehouse_id": 2,
+  "supplier_id": 10,
+  "authorizer_worker_id": 4,
+  "order_date": "2026-11-10",
+  "expected_date": "2026-11-20",
+  "total_amount": 312.50,
+  "status": "DRAFT",
+  "items": [
+    {
+      "id": 88,
+      "item_id": 101,
+      "quantity_ordered": 25,
+      "quantity_received": 0,
+      "case_cost": 12.50
+    }
+  ],
+  "created_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Order total ($125.00) is below supplier minimum order threshold of $250.00"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Supplier Purchase Orders] — route name `supplier-orders`
+- **Heading:** **Supplier Purchase Orders**
+- **Warehouse & Status Filters:** `<v-select>` facility selector; filter chips for `DRAFT`, `SUBMITTED`, `PARTIALLY_RECEIVED`, `RECEIVED`, `CANCELLED`
+- **Primary action:** **+ New Purchase Order** (`oc-cta`) opens order modal with:
+  - Vendor selector (`supplier_id`), destination warehouse, expected delivery date
+  - Line items dynamic table: SKU autocomplete, ordered case count, case cost, line total
+  - **Save as Draft** and **Submit to Vendor** (`oc-cta`) buttons
+- **Data Table:** `<v-data-table>` displaying columns:
+  - PO Number, Supplier, Order Date, Expected Date, Total Amount, Status Chip
+  - Row Actions:
+    - **View Details** icon (`aria-label="View order"`)
+    - **Edit** icon (`aria-label="Edit draft order"`, hidden if not DRAFT)
+    - **Cancel** icon (`aria-label="Cancel order"`)
+- **Empty state:** **"No purchase orders found for this warehouse. Create your first replenishment PO."**
+- **Loading state:** Skeleton rows
+- **Error state:** `<v-alert type="error">` displaying API error message
 
 ---
 
@@ -182,3 +278,21 @@
 * **When** the office manager attempts to cancel the order
 * **Then** the system rejects the cancellation
 * **And** displays an error message "Cannot cancel order: shipments have already been received at the loading dock. Process dock returns instead"
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-008** satisfied)
+* [ ] Database tables `supplier_orders` and `supplier_order_items` created with state constraints
+* [ ] API endpoints enforce lifecycle transitions and vendor minimum order checks
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+* [ ] Cross-tenant access returns `404 Not Found`
+
+---
+
+## Out of Scope
+
+* Automated replenishment PO calculation ([Feature 12 — Auto-Generate Supplier Orders](feature-12-auto-generate-supplier-orders.md))
+* Dock truck check-in and receiving ([Feature 13 — Receive Supplier Shipments](feature-13-receive-supplier-shipments.md))
+* Inventory putaway into bins ([Feature 14 — Putaway and Stock Inventory](feature-14-putaway-and-stock-inventory.md))

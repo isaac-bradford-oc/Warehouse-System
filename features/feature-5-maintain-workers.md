@@ -54,6 +54,90 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Workers belong strictly to their employer company (`company_id`) and assigned `warehouse_id`.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/workers` returns only workers belonging to `req.user.companyId`. |
+| **Write scope** | Modifying worker records is permitted only for workers within `req.user.companyId`. |
+| **Create scope** | New workers are created with `company_id = req.user.companyId`. |
+| **Cross-user access** | Accessing a worker profile belonging to another company returns `404 Not Found` (never `403`). |
+| **UI scope** | Worker assignment dropdowns on dispatch or pick lists display only active workers from the current facility. |
+| **Implementation** | Centralized query helper `getAccessibleWorkerOrNull(req, workerId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/workers` | Yes | `company admin`, `office manager` | List company workers |
+| `GET` | `/warehouse/workers/:id` | Yes | `company admin`, `office manager` | Get single worker details |
+| `POST` | `/warehouse/workers` | Yes | `company admin`, `office manager` | Register new worker |
+| `PUT` | `/warehouse/workers/:id` | Yes | `company admin`, `office manager` | Update worker profile / role |
+| `DELETE` | `/warehouse/workers/:id` | Yes | `company admin`, `office manager` | Deactivate or delete worker |
+
+**Create Request Body (`POST /warehouse/workers`):**
+```json
+{
+  "employee_id": "EMP-1042",
+  "worker_name": "Marcus Johnson",
+  "email": "m.johnson@apexlogistics.com",
+  "phone_number": "+1-214-555-0144",
+  "warehouse_id": 2,
+  "role": "PICKER"
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 42,
+  "company_id": 1,
+  "warehouse_id": 2,
+  "employee_id": "EMP-1042",
+  "worker_name": "Marcus Johnson",
+  "email": "m.johnson@apexlogistics.com",
+  "phone_number": "+1-214-555-0144",
+  "role": "PICKER",
+  "status": "ACTIVE",
+  "created_at": "2026-11-10T12:00:00.000Z",
+  "updated_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Email address m.johnson@apexlogistics.com is already registered"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Worker Management] — route name `workers`
+- **Heading:** **Warehouse Staff & Operators**
+- **Warehouse Filter:** `<v-select>` facility selector
+- **Role Filter:** `<v-select>` filter by role (`PICKER`, `STOCKER`, `RECEIVING_CLERK`, `DRIVER`, `OFFICE_MANAGER`)
+- **Primary action:** **+ Add Worker** (`oc-cta`) opens dialog with:
+  - `employee_id`, `worker_name`, `email`, `phone_number`
+  - `warehouse_id` (select), `role` (select)
+  - **Save Worker** (`oc-cta`) and **Cancel** buttons
+- **Data Table:** `<v-data-table>` displaying columns:
+  - Employee ID, Name, Role, Assigned Facility, Contact Phone, Status
+  - Row Actions:
+    - **Edit** icon (`aria-label="Edit worker"`)
+    - **Deactivate** icon (`aria-label="Deactivate worker"`)
+- **Empty state:** **"No warehouse workers found. Register staff members for this facility."**
+- **Loading state:** Skeleton progress loader
+- **Error state:** `<v-alert type="error">` displaying API error message
+
+---
+
 ## Key Entities
 
 - **Worker**: Operational personnel profile with employee ID, full name, email, phone, role (`PICKER` | `STOCKER` | `RECEIVING_CLERK` | `DRIVER` | `OFFICE_MANAGER`), assigned warehouse facility, and employment status (`ACTIVE` | `INACTIVE`).
@@ -146,3 +230,21 @@
 * **When** the office manager clicks "Delete Worker" and confirms
 * **Then** the system removes the record from the database
 * **And** displays confirmation "Worker Jane Doe deleted successfully"
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-006** satisfied)
+* [ ] Database table `workers` created with unique email and employee ID constraints
+* [ ] API endpoints `/warehouse/workers` enforce tenant scoping and role authorization
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+* [ ] Cross-tenant access returns `404 Not Found`
+
+---
+
+## Out of Scope
+
+* Payroll, shift scheduling, and timecard clock-in/out
+* Role-permission granular customization outside predefined enum roles
+* Driver route execution ([Feature 16 — Ship and Deliver Customer Orders](feature-16-ship-and-deliver-customer-orders.md))

@@ -55,6 +55,92 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Customers belong strictly to the tenant company (`company_id`).
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/customers` returns only customers where `company_id = req.user.companyId`. |
+| **Write scope** | Editing customers requires `company_id = req.user.companyId`. |
+| **Create scope** | New customer accounts are assigned `company_id = req.user.companyId`. |
+| **Cross-user access** | Accessing a customer belonging to another company returns `404 Not Found` (never `403`). |
+| **UI scope** | Route assignment and customer sales order forms list only the tenant's own customers. |
+| **Implementation** | Centralized query helper `getAccessibleCustomerOrNull(req, customerId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/customers` | Yes | `office manager`, `company admin` | List company customers |
+| `GET` | `/warehouse/customers/:id` | Yes | `office manager`, `company admin` | Get single customer details |
+| `POST` | `/warehouse/customers` | Yes | `office manager`, `company admin` | Register new customer account |
+| `PUT` | `/warehouse/customers/:id` | Yes | `office manager`, `company admin` | Update customer address or terms |
+| `DELETE` | `/warehouse/customers/:id` | Yes | `office manager`, `company admin` | Deactivate or delete customer |
+
+**Create Request Body (`POST /warehouse/customers`):**
+```json
+{
+  "customer_account_number": "CUST-TEX-101",
+  "customer_name": "Lone Star Markets",
+  "billing_address": "100 Main St, Suite 200, Austin, TX 78701",
+  "shipping_address": "550 Warehouse Rd, Dock B, Austin, TX 78702",
+  "contact_email": "receiving@lonestarmarkets.com",
+  "contact_phone": "+1-512-555-0133",
+  "payment_terms_days": 30,
+  "credit_limit": 10000.00
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 5,
+  "company_id": 1,
+  "customer_account_number": "CUST-TEX-101",
+  "customer_name": "Lone Star Markets",
+  "billing_address": "100 Main St, Suite 200, Austin, TX 78701",
+  "shipping_address": "550 Warehouse Rd, Dock B, Austin, TX 78702",
+  "contact_email": "receiving@lonestarmarkets.com",
+  "contact_phone": "+1-512-555-0133",
+  "payment_terms_days": 30,
+  "credit_limit": 10000.00,
+  "status": "ACTIVE",
+  "created_at": "2026-11-10T12:00:00.000Z",
+  "updated_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Customer account number CUST-TEX-101 already exists in your company"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Customer Accounts] — route name `customers`
+- **Heading:** **Customer Accounts**
+- **Primary action:** **+ Register Customer** (`oc-cta`) opens `<v-dialog>` with:
+  - `customer_account_number`, `customer_name`, `billing_address`, `shipping_address`
+  - `contact_email`, `contact_phone`, `payment_terms_days`, `credit_limit`
+  - **Save Customer** (`oc-cta`) and **Cancel** buttons
+- **Data Table:** `<v-data-table>` displaying columns:
+  - Account #, Name, Shipping Address, Phone, Credit Limit ($), Terms, Status
+  - Row Actions:
+    - **Edit** icon (`aria-label="Edit customer"`)
+    - **Deactivate** icon (`aria-label="Deactivate customer"`)
+- **Empty state:** **"No customer accounts registered yet. Register your first commercial buyer."**
+- **Loading state:** Skeleton table loader
+- **Error state:** `<v-alert type="error">` displaying API error message
+
+---
+
 ## Key Entities
 
 - **Customer**: A commercial buyer purchasing goods from the company, defined by account number, client name, billing address, shipping/delivery address, contact email/phone, credit limit, payment terms in days (e.g., Net 30), and account status (`ACTIVE` | `INACTIVE`).
@@ -153,3 +239,21 @@
 * **When** the office manager attempts to delete the customer record
 * **Then** the system rejects the deletion
 * **And** displays an error message "Cannot delete customer: active customer order exists. Please complete or cancel open orders first"
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-007** satisfied)
+* [ ] Database table `customers` created with compound unique indexes
+* [ ] API endpoints `/warehouse/customers` enforce tenant scoping and role guards
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+* [ ] Out-of-tenant access attempts return `404 Not Found`
+
+---
+
+## Out of Scope
+
+* Customer credit card processing, merchant gateway integration
+* Customer portal self-service ordering
+* Route stop assignment ([Feature 10 — Maintain Delivery Routes](feature-10-maintain-routes.md))

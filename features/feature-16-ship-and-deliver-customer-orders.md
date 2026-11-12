@@ -71,6 +71,102 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Bills of Lading, shipping dispatch records, and proof of delivery confirmations are strictly scoped to the tenant company and origin warehouse.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/shipping/manifests` and `GET /warehouse/bills-of-lading` return shipping documents matching `company_id = req.user.companyId` and `warehouse_id = req.user.warehouseId`. Drivers access stop manifests assigned to their worker ID. |
+| **Write scope** | Generating BOLs and dispatching routes is restricted to `shipping clerk`, `office manager`, and `company admin`. Recording POD confirmations is restricted to the assigned `driver`, `office manager`, or `company admin`. |
+| **Order & Route isolation** | BOLs and manifests link only orders and routes belonging to the same tenant company and origin facility. |
+| **Cross-user access** | Accessing shipping documents, routes, or orders belonging to another tenant or warehouse returns `404 Not Found`. |
+| **UI scope** | Shipping clerks only see orders staged at their facility; drivers only see stops assigned to their active route run. |
+| **Implementation** | Centralized query helpers `getAccessibleBolOrNull(req, bolId)` and `getAccessibleRouteOrNull(req, routeId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `POST` | `/warehouse/customer-orders/:id/generate-bol` | Yes | `shipping clerk`, `office manager`, `company admin` | Generate legal BOL document and carton manifest for picked order |
+| `GET` | `/warehouse/bills-of-lading/:id` | Yes | `shipping clerk`, `driver`, `office manager`, `company admin` | View BOL document details and printable payload |
+| `POST` | `/warehouse/routes/:id/dispatch` | Yes | `shipping clerk`, `office manager`, `company admin` | Confirm truck departure and transition orders to `SHIPPED` |
+| `GET` | `/warehouse/driver/manifest` | Yes | `driver` | Get sequenced stop manifest for authenticated driver |
+| `POST` | `/warehouse/customer-orders/:id/delivery-confirm` | Yes | `driver`, `office manager`, `company admin` | Record recipient signature, delivered quantities, or damage rejection |
+
+**Delivery Confirmation Request Body (`POST /warehouse/customer-orders/:id/delivery-confirm`):**
+```json
+{
+  "recipient_name": "Dave Miller",
+  "signature_data": "data:image/png;base64,iVBORw0KGgo...",
+  "items": [
+    {
+      "item_id": 101,
+      "quantity_delivered": 10,
+      "quantity_rejected": 2,
+      "rejection_reason": "2 cartons water damaged in transit"
+    }
+  ]
+}
+```
+
+**Success Response (`200 OK`):**
+```json
+{
+  "order_id": 201,
+  "status": "DELIVERED",
+  "pod_id": 88,
+  "recipient_name": "Dave Miller",
+  "delivered_at": "2026-11-10T16:45:00.000Z",
+  "discrepancy_report_id": 14,
+  "adjusted_invoice_total": 240.00
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Cannot confirm delivery: Order SO-202611-0001 has already been marked DELIVERED"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Shipping Staging & Route Dispatch] — route name `shipping`
+- **Heading:** **Shipping Staging & Route Dispatch**
+- **Facility & Date Filters:** `<v-select>` facility selector; route delivery date picker
+- **Staged Orders Table:** `<v-data-table>` displaying:
+  - Order Number, Customer Name, Outbound Staging Lane, Carton Count, Assigned Route, BOL Number, Order Status
+  - Row Actions:
+    - **Generate BOL** button (`oc-cta`, active if status is `PICKED` and BOL not yet generated)
+    - **Print BOL** icon button (`aria-label="Print Bill of Lading"`)
+- **Route Dispatch Card:**
+  - Route code, Driver selector, Vehicle ID, Total Assigned Orders, Total Cartons
+  - **Dispatch Truck** button (`oc-cta`) opens confirmation modal to transition all route orders to `SHIPPED`
+
+### [View: Driver Mobile Delivery Manifest] — route name `driver-delivery`
+- **Heading:** **Driver Delivery Manifest**
+- **Driver Header Bar:** Driver name, Route ID, current stop progress indicator (`Stop 2 of 5`)
+- **Sequential Stops List:** `<v-card>` list displaying:
+  - Customer Name, Delivery Address, Contact Phone, Carton Count, Order Status Badge
+  - **Arrive at Stop** action button
+- **Proof of Delivery (POD) Dialog:**
+  - Recipient Name input: `<v-text-field label="Recipient Name" required>`
+  - Delivered vs Rejected line items list with numeric counter steppers
+  - Rejection reason input (mandatory when `quantity_rejected > 0`)
+  - Electronic Signature Pad (`<canvas>` component with **Clear** and **Accept Signature** controls)
+  - **Confirm Delivery** button (`oc-cta`)
+- **Empty state:** **"No active delivery stops assigned to your route today."**
+- **Loading state:** Skeleton cards
+- **Error state:** `<v-alert type="error">` displaying API error message
+- **Responsive design:** Optimized for mobile phones and handheld driver terminals
+
+---
+
 ## Key Entities
 
 - **Bill of Lading (BOL)**: Legal freight shipping document linking route run, customer sales orders, freight weights, carton counts, and shipper/carrier signatures.
@@ -181,4 +277,25 @@
 * **And** attempts to confirm delivery
 * **Then** the system rejects confirmation
 * **And** displays an inline error message "Discrepancy explanation is required when logging rejected or missing items"
+
+---
+
+## Definition of Done
+
+* [ ] Shipping dispatch and mobile driver delivery UI implemented per this spec (**FR-001** – **FR-007** satisfied)
+* [ ] Database tables `bills_of_lading` and `delivery_confirmations` created with foreign keys and unique constraints
+* [ ] BOL generation permitted only for orders in `PICKED` status
+* [ ] Dispatching route atomically transitions assigned orders to `SHIPPED`
+* [ ] Proof of delivery captures recipient name and electronic signature
+* [ ] Delivery exceptions create `DELIVERY_DISCREPANCY` report in [Feature 11 — Maintain Reports](feature-11-maintain-reports.md) and adjust billable invoice amount
+* [ ] Cross-tenant access returns `404 Not Found`
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+
+---
+
+## Out of Scope
+
+* Third-party parcel carrier API integration (FedEx / UPS Web Services)
+* Real-time GPS telematics hardware integration and live vehicle tracking maps
+* Driver turn-by-turn navigation engine
 

@@ -63,6 +63,88 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Reports belong to the tenant company and origin warehouse facility.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/reports` returns reports where `company_id = req.user.companyId` and `warehouse_id = req.user.warehouseId`. |
+| **Write scope** | Resolving or archiving reports requires `company_id = req.user.companyId` and role `OFFICE_MANAGER` or `COMPANY_ADMIN`. |
+| **Create scope** | System triggers and manual generation associate with caller's company and warehouse. |
+| **Cross-user access** | Accessing reports belonging to another company returns `404 Not Found` (never `403`). |
+| **UI scope** | Managers only see reports relevant to their active warehouse facility. |
+| **Implementation** | Centralized query helper `getAccessibleReportOrNull(req, reportId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/reports` | Yes | `office manager`, `company admin` | List & filter reports |
+| `GET` | `/warehouse/reports/:id` | Yes | `office manager`, `company admin` | Get report and JSON payload |
+| `POST` | `/warehouse/reports` | Yes | `office manager`, `company admin` | Generate on-demand report |
+| `POST` | `/warehouse/reports/:id/resolve` | Yes | `office manager`, `company admin` | Record notes & resolve |
+| `POST` | `/warehouse/reports/:id/archive` | Yes | `office manager`, `company admin` | Archive resolved report |
+
+**Resolve Report Request Body (`POST /warehouse/reports/42/resolve`):**
+```json
+{
+  "resolution_notes": "Contacted supplier Acme Beverage; credit memo #CM-881 issued for 5 damaged cases."
+}
+```
+
+**Success Response (`200 OK`):**
+```json
+{
+  "id": 42,
+  "report_code": "RPT-202611-0042",
+  "company_id": 1,
+  "warehouse_id": 2,
+  "report_type": "RECEIVING_DISCREPANCY",
+  "triggered_by": "AUTOMATED_SYSTEM",
+  "summary": "Shortage of 5 cases recorded on PO-202611-0001",
+  "status": "RESOLVED",
+  "resolved_by_worker_id": 4,
+  "resolution_notes": "Contacted supplier Acme Beverage; credit memo #CM-881 issued for 5 damaged cases.",
+  "created_at": "2026-11-10T11:00:00.000Z",
+  "resolved_at": "2026-11-10T12:30:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found`):**
+```json
+{
+  "message": "Resolution notes are required before resolving an exception report"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Operational Reports & Exceptions] — route name `reports`
+- **Heading:** **Operational Reports & Exception Audits**
+- **Filter Bar:**
+  - Facility selector `<v-select>`
+  - Report type filter chips: `All`, `Out of Stock`, `Receiving Discrepancy`, `Delivery Discrepancy`, `Inventory Valuation`
+  - Status filter: `OPEN`, `RESOLVED`, `ARCHIVED`
+  - Date range picker (start and end date)
+- **Primary action:** **+ Run On-Demand Report** (`oc-cta`) opens generation dialog
+- **Data Table:** `<v-data-table>` displaying columns:
+  - Report Code, Type, Summary, Created At, Status (`<v-chip color="red">Open</v-chip>`)
+  - Row Actions:
+    - **View Details** icon (`aria-label="View report details"`)
+    - **Resolve** icon (`aria-label="Resolve report"`, disabled if already RESOLVED)
+    - **Archive** icon (`aria-label="Archive report"`)
+- **Resolution Dialog:** `<v-dialog>` with textarea for `resolution_notes`, **Submit Resolution** (`oc-cta`), and **Cancel**
+- **Empty state:** **"No exception reports match your criteria. Facility operating normally."**
+- **Loading state:** Skeleton rows
+- **Error state:** `<v-alert type="error">` displaying API error message
+
+---
+
 ## Key Entities
 
 - **Report**: An operational record or discrepancy alert defined by report number, warehouse, report type, creation trigger, summary, structured event payload, resolution status (`OPEN` | `UNDER_REVIEW` | `RESOLVED` | `ARCHIVED`), and resolving manager notes.
@@ -166,3 +248,21 @@
 * **Then** the system blocks the archive action
 * **And** displays an error message "Cannot archive report in OPEN status. Reports must be marked RESOLVED before archiving"
 * **And** the report remains in `"OPEN"` status
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-006** satisfied)
+* [ ] Database table `reports` created with report type enums and structured JSON storage
+* [ ] API endpoints `/warehouse/reports` enforce facility scoping and validation rules
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+* [ ] Resolution notes strictly required for status transition to `RESOLVED`
+
+---
+
+## Out of Scope
+
+* Automated supplier claim filing over external vendor portals
+* PDF export of complex multi-page financial ledger audits
+* Scheduled email digest dispatching

@@ -53,6 +53,82 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Companies are the top-level tenancy boundary in the system.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | System Administrators (`admin`) can view all companies. Tenant users see only their own company profile. |
+| **Write scope** | Only System Administrators (`admin`) can create, edit, or delete/deactivate company records. |
+| **Create scope** | System Administrator generates new tenant root record. |
+| **Cross-user access** | Any unauthorized request to `/warehouse/companies/:id` returns `404 Not Found` (never `403`). |
+| **UI scope** | Tenant workers never see the tenant administration navigation; only System Admin sees the Companies view. |
+| **Implementation** | Enforced by `requireRole(['admin'])` middleware in `backend/app/authorization/`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/companies` | Yes | `admin` | List all registered companies |
+| `GET` | `/warehouse/companies/:id` | Yes | `admin` | Fetch single company record by ID |
+| `POST` | `/warehouse/companies` | Yes | `admin` | Register a new tenant company |
+| `PUT` | `/warehouse/companies/:id` | Yes | `admin` | Update company profile details |
+| `DELETE` | `/warehouse/companies/:id` | Yes | `admin` | Delete or deactivate company |
+
+**Create Request Body (`POST /warehouse/companies`):**
+```json
+{
+  "company_name": "Apex Logistics Corp",
+  "company_address": "123 Supply Chain Blvd, Suite 400, Dallas, TX 75201",
+  "company_phone_number": "+1-214-555-0199"
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 1,
+  "company_name": "Apex Logistics Corp",
+  "company_address": "123 Supply Chain Blvd, Suite 400, Dallas, TX 75201",
+  "company_phone_number": "+1-214-555-0199",
+  "status": "ACTIVE",
+  "created_at": "2026-11-10T12:00:00.000Z",
+  "updated_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Company name is required (2–100 characters)"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Companies Administration] — route name `companies`
+- **Heading:** **Registered Companies**
+- **Primary action:** **+ Register Company** button using class `oc-cta` opening `<v-dialog>` with:
+  - `company_name` text input
+  - `company_address` text input
+  - `company_phone_number` text input
+  - **Save Company** (`oc-cta`) and **Cancel** buttons
+- **Data Table:** `<v-data-table>` displaying columns:
+  - ID, Company Name, Address, Phone Number, Status (`<v-chip color="green">Active</v-chip>`)
+  - Row Actions:
+    - **Edit** icon (`aria-label="Edit company"`) opens prefilled edit dialog
+    - **Delete** icon (`aria-label="Delete company"`) opens confirmation dialog
+- **Empty state:** **"No companies registered yet. Register your first tenant company."**
+- **Loading state:** Skeleton progress loader during API fetch
+- **Error state:** `<v-alert type="error">` displaying API error message
+
+---
+
 ## Key Entities
 
 - **Company**: Tenant entity with unique identification, legal company name, headquarters address, primary contact phone number, and account status (`ACTIVE` | `INACTIVE`).
@@ -146,3 +222,21 @@
 * **Then** the system refuses deletion
 * **And** displays an error message "Cannot delete company: 2 active warehouses are currently linked. Please reassign or delete dependent warehouses first"
 * **And** the company record remains intact
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-005** satisfied)
+* [ ] Database table `companies` created with unique constraints and status check
+* [ ] All API endpoints (`/warehouse/companies`) secured with `admin` authorization guard
+* [ ] All Gherkin acceptance criteria scenarios verified via automated tests
+* [ ] Error responses return standard `{ "message": "..." }` and 404 on out-of-scope access
+
+---
+
+## Out of Scope
+
+* Tenant billing, subscription tiers, and payment processing
+* Warehouse creation and management ([Feature 2 — Maintain Warehouses](feature-2-maintain-warehouses.md))
+* Company worker and user provisioning ([Feature 5 — Maintain Workers](feature-5-maintain-workers.md))

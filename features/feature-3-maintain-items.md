@@ -56,6 +56,96 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Items belong strictly to the tenant company catalog (`company_id`).
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/items` returns only catalog items where `company_id = req.user.companyId`. |
+| **Write scope** | Updates/deletions apply only if the item matches `id` and `company_id = req.user.companyId`. |
+| **Create scope** | New items are automatically assigned `company_id = req.user.companyId`. |
+| **Cross-user access** | Accessing an item belonging to another company returns `404 Not Found` (never `403`). |
+| **UI scope** | Catalog, order entry, and replenishment screens display only the tenant's own catalog. |
+| **Implementation** | Centralized query helper `getAccessibleItemOrNull(req, itemId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/items` | Yes | `office manager`, `company admin` | List company catalog items |
+| `GET` | `/warehouse/items/:id` | Yes | `office manager`, `company admin` | Get item by ID |
+| `POST` | `/warehouse/items` | Yes | `office manager`, `company admin` | Create a new catalog SKU |
+| `PUT` | `/warehouse/items/:id` | Yes | `office manager`, `company admin` | Update item pricing, pack, or thresholds |
+| `DELETE` | `/warehouse/items/:id` | Yes | `office manager`, `company admin` | Discontinue or delete SKU |
+
+**Create Request Body (`POST /warehouse/items`):**
+```json
+{
+  "sku": "DRK-COLA-01",
+  "item_upc": "012345678905",
+  "case_upc": "00012345678905",
+  "supplier_id": 10,
+  "description": "Sparkling Cola 12oz Can - 24pk",
+  "case_quantity": 24,
+  "case_cost": 12.50,
+  "unit_price": 1.25,
+  "min_quantity": 100,
+  "max_quantity": 500
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 101,
+  "company_id": 1,
+  "supplier_id": 10,
+  "sku": "DRK-COLA-01",
+  "item_upc": "012345678905",
+  "case_upc": "00012345678905",
+  "description": "Sparkling Cola 12oz Can - 24pk",
+  "case_quantity": 24,
+  "case_cost": 12.50,
+  "unit_price": 1.25,
+  "min_quantity": 100,
+  "max_quantity": 500,
+  "status": "ACTIVE",
+  "created_at": "2026-11-10T12:00:00.000Z",
+  "updated_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "SKU DRK-COLA-01 already exists in the company catalog"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Product Catalog] — route name `items`
+- **Heading:** **Master Product Catalog**
+- **Primary action:** **+ Add Product** (`oc-cta`) opens `<v-dialog>` with:
+  - `sku`, `description`, `supplier_id` (dropdown), `item_upc`, `case_upc`
+  - `case_quantity`, `case_cost`, `unit_price`, `min_quantity`, `max_quantity`
+  - **Save Product** (`oc-cta`) and **Cancel** buttons
+- **Data Table:** `<v-data-table>` displaying columns:
+  - SKU, Description, Supplier, Unit Price, Case Pack, Min / Max, Status
+  - Row Actions:
+    - **Edit** icon (`aria-label="Edit item"`)
+    - **Discontinue** icon (`aria-label="Discontinue item"`)
+- **Empty state:** **"No products in catalog yet. Add your first inventory item."**
+- **Loading state:** Skeleton loader while fetching records
+- **Error state:** `<v-alert type="error">` displaying API error message
+
+---
+
 ## Key Entities
 
 - **Item**: Master catalog entity defining SKU, barcode UPCs, description, supplier reference, case pack size, financial costs/pricing, replenishment min/max thresholds, and catalog status (`ACTIVE` | `DISCONTINUED`).
@@ -166,3 +256,21 @@
 * **When** the office manager attempts to delete or discontinue the item
 * **Then** the system rejects the request
 * **And** displays an error message "Cannot discontinue item: 150 units remain in stock across warehouse facilities. Deplete inventory first."
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-008** satisfied)
+* [ ] Database table `items` created with unique SKU, item UPC, and case UPC constraints
+* [ ] API endpoints `/warehouse/items` enforce tenant data isolation and role guards
+* [ ] Gherkin acceptance criteria verified by automated tests
+* [ ] Access to other tenants' items returns `404 Not Found`
+
+---
+
+## Out of Scope
+
+* Physical bin assignment and storage slots ([Feature 4 — Maintain Inventory Locations](feature-4-maintain-inventory.md))
+* Supplier order placement ([Feature 7 — Maintain Supplier Orders](feature-7-maintain-supplier-orders.md))
+* Automated min-max replenishment generation ([Feature 12 — Auto-Generate Supplier Orders](feature-12-auto-generate-supplier-orders.md))

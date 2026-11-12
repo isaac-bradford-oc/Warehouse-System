@@ -67,6 +67,100 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Receiving receipts and dock check-in transactions are strictly scoped to the tenant company and destination warehouse.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/receiving-receipts` returns receipts where `warehouse_id = req.user.warehouseId` and belongs to `req.user.companyId`. |
+| **Write scope** | Dock receiving is restricted to `receiving clerk`, `office manager`, and `company admin` assigned to the receiving warehouse. |
+| **PO association** | Check-in requires a valid purchase order in status `SUBMITTED` or `PARTIALLY_RECEIVED` owned by the user's company and warehouse. |
+| **Cross-user access** | Accessing receiving receipts or purchase orders belonging to another tenant or warehouse returns `404 Not Found`. |
+| **UI scope** | Receiving clerks only see inbound shipments and open purchase orders targeted for their assigned facility. |
+| **Implementation** | Centralized query helper `getAccessibleReceivingReceiptOrNull(req, receiptId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/receiving-receipts` | Yes | `receiving clerk`, `office manager`, `company admin` | List dock receipts for warehouse |
+| `GET` | `/warehouse/receiving-receipts/:id` | Yes | `receiving clerk`, `office manager`, `company admin` | Get specific receipt lines and damage details |
+| `POST` | `/warehouse/receiving-receipts` | Yes | `receiving clerk`, `office manager`, `company admin` | Record inbound shipment receipt, stage goods, and update PO |
+| `GET` | `/warehouse/supplier-orders/:id/receiving-checkin` | Yes | `receiving clerk`, `office manager`, `company admin` | Validate open PO and retrieve expected line items for dock check-in |
+
+**Create Request Body (`POST /warehouse/receiving-receipts`):**
+```json
+{
+  "order_id": 105,
+  "warehouse_id": 2,
+  "carrier_name": "FedEx Freight",
+  "bol_number": "BOL-FEDEX-991",
+  "items": [
+    {
+      "item_id": 101,
+      "quantity_accepted": 25,
+      "quantity_damaged": 5,
+      "damage_reason": "Crushed cartons, leaking cans"
+    }
+  ]
+}
+```
+
+**Success Response (`201 Created`):**
+```json
+{
+  "id": 12,
+  "receipt_number": "RCV-202611-0012",
+  "order_id": 105,
+  "warehouse_id": 2,
+  "carrier_name": "FedEx Freight",
+  "bol_number": "BOL-FEDEX-991",
+  "total_accepted_cases": 25,
+  "total_damaged_cases": 5,
+  "order_status": "PARTIALLY_RECEIVED",
+  "discrepancy_report_id": 8,
+  "received_at": "2026-11-10T14:30:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Damage reason description is required when logging damaged quantities"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Dock Receiving & Inbound Check-In] — route name `receiving`
+- **Heading:** **Dock Receiving & Inbound Check-In**
+- **Facility & Dock Selector:** `<v-select>` facility selector; active dock door selector
+- **PO Lookup Card:**
+  - Autocomplete / barcode scanner input for Purchase Order (`PO-XXXXXX`)
+  - Carrier name text input
+  - BOL / Tracking Number input with duplicate-check validation
+- **Receiving Line Items Grid:** `<v-data-table>` displaying:
+  - SKU, Description, Ordered Cases, Previously Received, Remaining Expected
+  - Accepted Cases input field (`<v-text-field type="number">`)
+  - Damaged Cases input field (`<v-text-field type="number">`)
+  - Damage Reason text input / select menu
+  - Condition status badge
+- **Action Toolbar:**
+  - **Attach BOL Document / Photo** button
+  - **Confirm Receipt** button (`oc-cta`) opens confirmation modal
+- **Recent Inbound Receipts Table:** `<v-data-table>` displaying:
+  - Receipt Number, PO Number, Carrier, BOL #, Accepted Cases, Damaged Cases, Time, View Details action
+- **Empty state:** **"Scan or enter a purchase order number to start receiving an inbound truck."**
+- **Loading state:** Skeleton table loaders
+- **Error state:** `<v-alert type="error">` displaying API error message
+
+---
+
 ## Key Entities
 
 - **Receiving Receipt**: Receiving transaction record capturing receipt number, purchase order ID, carrier name, tracking / BOL number, receiving worker ID, timestamp, and dock door.
@@ -178,4 +272,23 @@
 * **When** a receiving clerk attempts to record another delivery for the same order using BOL "BOL-FEDEX-991"
 * **Then** the system warns the clerk "BOL BOL-FEDEX-991 has already been processed for this order"
 * **And** requires confirmation or entry of the correct unique freight document number
+
+---
+
+## Definition of Done
+
+* [ ] Dock receiving backend APIs and frontend check-in UI implemented per this spec (**FR-001** – **FR-007** satisfied)
+* [ ] Database tables `receiving_receipts` and `receiving_receipt_lines` created with foreign keys and unique constraints
+* [ ] Purchase order status transitions correctly (`PARTIALLY_RECEIVED` or `RECEIVED`)
+* [ ] Damaged quantities automatically create a `RECEIVING_DISCREPANCY` report in [Feature 11 — Maintain Reports](feature-11-maintain-reports.md)
+* [ ] Cross-tenant access returns `404 Not Found`
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+
+---
+
+## Out of Scope
+
+* Inventory putaway into bins ([Feature 14 — Putaway and Stock Inventory](feature-14-putaway-and-stock-inventory.md))
+* Supplier invoice matching and accounts payable debit memo processing
+* Freight claims submission to third-party carrier APIs
 

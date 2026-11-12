@@ -66,8 +66,6 @@
 * **Independent test:** Attempt deletion of a bin containing inventory (blocked); delete an empty bin (succeeds).  
 * **Acceptance scenarios:** see [US-4.6](#us-46--delete--deactivate-bin) under Acceptance Criteria.
 
-*(Note: Real-time operational stock movements, picking, and receiving putaway have been extracted into dedicated operational features: [Feature 14 — Putaway and Stock Inventory](feature-14-putaway-and-stock-inventory.md) and [Feature 15 — Pick Customer Orders](feature-15-pick-customer-orders.md)).*
-
 ---
 
 ## Requirements
@@ -82,6 +80,95 @@
 - **FR-006**: System MUST prevent deletion of any slot or bin that currently has positive `current_quantity` of inventory.
 - **FR-007**: System MUST validate that `max_capacity_units` is greater than zero and `current_quantity` cannot exceed `max_capacity_units`.
 - **FR-008**: System MUST return descriptive confirmation or explicit validation error messages for all form operations.
+
+---
+
+## Data Ownership & Isolation
+
+Slots and Bins are scoped to a specific warehouse facility belonging to the tenant company.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/warehouses/:warehouseId/slots` returns slots only if the warehouse belongs to `req.user.companyId`. |
+| **Write scope** | Modifying slots or bins is permitted only if the parent warehouse matches the caller's tenant company and assigned facility. |
+| **Create scope** | New slots and bins inherit the parent warehouse and company scope. |
+| **Cross-user access** | Accessing slots or bins outside the user's company/warehouse returns `404 Not Found`. |
+| **UI scope** | The UI only lists locations within the currently active facility context. |
+| **Implementation** | Centralized query helper `getAccessibleSlotOrNull(req, slotId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/warehouses/:warehouseId/slots` | Yes | `office manager`, `company admin` | List slots for a warehouse |
+| `POST` | `/warehouse/warehouses/:warehouseId/slots` | Yes | `office manager`, `company admin` | Create a new racking slot |
+| `PUT` | `/warehouse/slots/:id` | Yes | `office manager`, `company admin` | Update slot capacity or details |
+| `DELETE` | `/warehouse/slots/:id` | Yes | `office manager`, `company admin` | Delete an empty slot |
+| `GET` | `/warehouse/slots/:slotId/bins` | Yes | `office manager`, `company admin` | List bins in a slot |
+| `POST` | `/warehouse/slots/:slotId/bins` | Yes | `office manager`, `company admin` | Add bin to a slot |
+| `PUT` | `/warehouse/bins/:id` | Yes | `office manager`, `company admin` | Update bin capacity or assigned SKU |
+| `DELETE` | `/warehouse/bins/:id` | Yes | `office manager`, `company admin` | Delete an empty bin |
+
+**Create Slot Request Body (`POST /warehouse/warehouses/2/slots`):**
+```json
+{
+  "slot_code": "A01-S01",
+  "aisle": "A01",
+  "shelf": "01",
+  "total_bin_capacity": 4
+}
+```
+
+**Create Bin Request Body (`POST /warehouse/slots/10/bins`):**
+```json
+{
+  "bin_code": "BIN-02",
+  "barcode": "BIN-DAL01-A01-S01-B02",
+  "assigned_item_id": 101,
+  "max_capacity_units": 100
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 55,
+  "slot_id": 10,
+  "bin_code": "BIN-02",
+  "barcode": "BIN-DAL01-A01-S01-B02",
+  "assigned_item_id": 101,
+  "current_quantity": 0,
+  "max_capacity_units": 100,
+  "status": "ACTIVE",
+  "created_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Cannot add bin: Slot A01-S01 has reached its maximum bin capacity of 4"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Inventory Locations & Bin Mapping] — route name `inventory-locations`
+- **Heading:** **Storage Locations & Bins**
+- **Warehouse Filter:** `<v-select>` facility selector
+- **Primary actions:**
+  - **+ Add Slot** (`oc-cta`) opens slot creation dialog
+  - **+ Add Bin** (`oc-cta`) opens bin creation dialog
+- **Data Tree / Table:** Displays Aisle $\rightarrow$ Shelf $\rightarrow$ Slot $\rightarrow$ Bins
+  - Slot Columns: Slot Code, Aisle, Shelf, Bin Capacity, Actions (Edit, Delete)
+  - Bin Sub-table: Bin Code, Scannable Barcode, Assigned SKU, Current / Max Units, Actions (Edit, Delete)
+- **Empty state:** **"No storage locations defined for this warehouse. Add your first aisle slot."**
+- **Loading state:** Progress circular / skeleton table
+- **Error state:** `<v-alert type="error">` displaying API error message
 
 ---
 
@@ -236,3 +323,21 @@
 * **Then** the system rejects the deletion
 * **And** displays an error message "Cannot delete bin: bin contains 45 units of inventory. Move or pick all items before deleting"
 * **And** the bin remains active in the database
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-008** satisfied)
+* [ ] Database tables `slots` and `bins` created with compound unique indexes and capacity checks
+* [ ] API endpoints enforce facility scoping and prevent cross-tenant/cross-warehouse tampering
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+* [ ] Deletion of occupied slots or bins prevented with 400 Bad Request
+
+---
+
+## Out of Scope
+
+* Physical putaway movements and mobile barcode scanning ([Feature 14 — Putaway and Stock Inventory](feature-14-putaway-and-stock-inventory.md))
+* Order picking and stock deductions ([Feature 15 — Pick Customer Orders](feature-15-pick-customer-orders.md))
+* Dynamic automated slotting algorithms based on pick frequency

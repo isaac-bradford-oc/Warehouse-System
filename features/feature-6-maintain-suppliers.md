@@ -55,6 +55,95 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Suppliers belong to the tenant company (`company_id`).
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/suppliers` returns only suppliers belonging to `req.user.companyId`. |
+| **Write scope** | Updates/deletions apply only if the supplier matches `id` and `company_id = req.user.companyId`. |
+| **Create scope** | New suppliers are created with `company_id = req.user.companyId`. |
+| **Cross-user access** | Accessing a supplier belonging to another tenant returns `404 Not Found` (never `403`). |
+| **UI scope** | Purchase order and replenishment screens only display suppliers owned by the tenant company. |
+| **Implementation** | Centralized query helper `getAccessibleSupplierOrNull(req, supplierId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/suppliers` | Yes | `office manager`, `company admin` | List company suppliers |
+| `GET` | `/warehouse/suppliers/:id` | Yes | `office manager`, `company admin` | Get single supplier details |
+| `POST` | `/warehouse/suppliers` | Yes | `office manager`, `company admin` | Create new supplier profile |
+| `PUT` | `/warehouse/suppliers/:id` | Yes | `office manager`, `company admin` | Update terms, lead time, or contact |
+| `DELETE` | `/warehouse/suppliers/:id` | Yes | `office manager`, `company admin` | Deactivate or delete supplier |
+
+**Create Request Body (`POST /warehouse/suppliers`):**
+```json
+{
+  "supplier_code": "SUPP-ACME",
+  "supplier_name": "Acme Beverage Supply",
+  "supplier_address": "88 Industrial Way, Atlanta, GA 30301",
+  "contact_email": "orders@acmebev.com",
+  "contact_phone": "+1-404-555-0188",
+  "our_customer_number": "CUST-9921",
+  "lead_time_days": 5,
+  "payment_terms_days": 30,
+  "min_order_amount": 250.00
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 10,
+  "company_id": 1,
+  "supplier_code": "SUPP-ACME",
+  "supplier_name": "Acme Beverage Supply",
+  "supplier_address": "88 Industrial Way, Atlanta, GA 30301",
+  "contact_email": "orders@acmebev.com",
+  "contact_phone": "+1-404-555-0188",
+  "our_customer_number": "CUST-9921",
+  "lead_time_days": 5,
+  "payment_terms_days": 30,
+  "min_order_amount": 250.00,
+  "status": "ACTIVE",
+  "created_at": "2026-11-10T12:00:00.000Z",
+  "updated_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "A supplier with this name already exists in your company"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Supplier Vendors] — route name `suppliers`
+- **Heading:** **Suppliers & Vendors**
+- **Primary action:** **+ Add Supplier** (`oc-cta`) opens `<v-dialog>` with:
+  - `supplier_code`, `supplier_name`, `supplier_address`
+  - `contact_email`, `contact_phone`, `our_customer_number`
+  - `lead_time_days`, `payment_terms_days`, `min_order_amount`
+  - **Save Supplier** (`oc-cta`) and **Cancel** buttons
+- **Data Table:** `<v-data-table>` displaying columns:
+  - Code, Name, Account #, Lead Time (Days), Terms, Min Order ($), Status
+  - Row Actions:
+    - **Edit** icon (`aria-label="Edit supplier"`)
+    - **Deactivate** icon (`aria-label="Deactivate supplier"`)
+- **Empty state:** **"No suppliers found. Register your primary vendors to begin purchasing."**
+- **Loading state:** Skeleton table loader
+- **Error state:** `<v-alert type="error">` displaying API error message
+
+---
+
 ## Key Entities
 
 - **Supplier**: A commercial vendor selling products to the company, defined by vendor code, legal name, address, contact email/phone, our customer account number with them, standard shipping lead time in days, payment terms in days (e.g., Net 30), minimum order spend threshold, and vendor status (`ACTIVE` | `INACTIVE`).
@@ -155,3 +244,21 @@
 * **When** the office manager attempts to delete the supplier
 * **Then** the system rejects the deletion
 * **And** displays an error message "Cannot delete supplier: 1 open purchase order exists. Cancel or receive all open orders first"
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-007** satisfied)
+* [ ] Database table `suppliers` created with compound unique indexes
+* [ ] API endpoints `/warehouse/suppliers` enforce tenant scoping and role guards
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+* [ ] Cross-tenant access returns `404 Not Found`
+
+---
+
+## Out of Scope
+
+* Automated replenishment PO generation ([Feature 12 — Auto-Generate Supplier Orders](feature-12-auto-generate-supplier-orders.md))
+* Supplier invoice OCR scanning and electronic remittance processing
+* EDI (Electronic Data Interchange) ANSI X12 850 direct protocol integration

@@ -58,6 +58,85 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Automated replenishment calculations and generated orders are strictly scoped to the tenant company and target warehouse.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/replenishment/logs` returns runs and evaluations matching `company_id = req.user.companyId` and `warehouse_id = req.user.warehouseId`. |
+| **Execution scope** | On-demand or scheduled replenishment execution evaluates only items and inventory belonging to `req.user.companyId` and the selected warehouse. |
+| **Generated orders scope** | All auto-generated purchase orders are created with `company_id = req.user.companyId`, `warehouse_id = target_warehouse_id`, and status `DRAFT`. |
+| **Cross-user access** | Accessing replenishment runs or attempting calculation for another company or warehouse returns `404 Not Found`. |
+| **UI scope** | Office managers only see replenishment simulations, candidate items, and historical logs for their assigned facility. |
+| **Implementation** | Centralized query helper `getAccessibleWarehouseOrNull(req, warehouseId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/replenishment/logs` | Yes | `office manager`, `company admin` | List historical replenishment execution logs |
+| `GET` | `/warehouse/replenishment/logs/:id` | Yes | `office manager`, `company admin` | Get specific replenishment run details and generated POs |
+| `POST` | `/warehouse/replenishment/calculate` | Yes | `office manager`, `company admin` | Preview replenishment requirements without creating orders (dry run) |
+| `POST` | `/warehouse/replenishment/generate` | Yes | `office manager`, `company admin` | Run calculation and generate draft purchase orders |
+
+**Generate Request Body (`POST /warehouse/replenishment/generate`):**
+```json
+{
+  "warehouse_id": 2
+}
+```
+
+**Success Response (`200 OK` / `201 Created`):**
+```json
+{
+  "log_id": 42,
+  "warehouse_id": 2,
+  "items_evaluated_count": 184,
+  "items_triggered_count": 3,
+  "orders_created_count": 2,
+  "generated_order_ids": [105, 106],
+  "warnings": [
+    "PO-202611-0006 for Nut Supply Co ($120.00) is below vendor minimum ($300.00)"
+  ],
+  "executed_at": "2026-11-10T06:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found`):**
+```json
+{
+  "message": "Invalid warehouse ID or warehouse not found"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Automated Replenishment Planning] — route name `replenishment`
+- **Heading:** **Automated Replenishment Planning**
+- **Warehouse Filter:** `<v-select>` facility selector
+- **Summary KPI Cards:**
+  - Items Below Minimum
+  - Triggered Reorders
+  - Pending Generated Draft POs
+  - Last Automated Run Timestamp
+- **Action Toolbar:**
+  - **Simulate Replenishment** button (runs preview calculation without writing PO records)
+  - **Generate Replenishment Orders** button (`oc-cta`) opens confirmation modal summarizing items, total spend, and draft PO count
+- **Replenishment Candidate Table:** `<v-data-table>` displaying columns:
+  - SKU, Item Name, Category, On-Hand, On-Order, Reserved, Effective Stock, Min Threshold, Max Threshold, Case Size, Calculated Cases, Supplier Name, Estimated Line Total, Status Badge
+- **Recent Execution Runs Table:** `<v-data-table>` displaying:
+  - Run Date/Time, Items Evaluated, Orders Generated, Status, Details Action
+- **Empty state:** **"All inventory levels are currently above reorder thresholds for this warehouse."**
+- **Loading state:** Skeleton table loaders
+- **Error state:** `<v-alert type="error">` displaying calculation or permission error
+
+---
+
 ## Key Entities
 
 - **Replenishment Run**: Execution log recording timestamp, warehouse evaluated, items assessed, orders generated, and summary metrics.
@@ -146,4 +225,24 @@
 * **Then** the system calculates `Effective Stock` = 60 units
 * **And** recognizes the deficit below `min_quantity` (100)
 * **And** generates a new replenishment draft PO for 18 cases
+
+---
+
+## Definition of Done
+
+* [ ] Replenishment calculation engine and planning UI implemented per this spec (**FR-001** – **FR-007** satisfied)
+* [ ] Database table `replenishment_logs` created with constraints and foreign keys
+* [ ] Calculation correctly implements formula: `(On-Hand + On-Order - Reserved)` vs `min_quantity`
+* [ ] Cases rounded up to nearest whole master case: `CEIL((max - effective) / case_quantity)`
+* [ ] Orders grouped by supplier with `BELOW_VENDOR_MINIMUM` warnings attached when applicable
+* [ ] Cross-tenant access returns `404 Not Found`
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+
+---
+
+## Out of Scope
+
+* Direct supplier EDI auto-transmission without manager review (all auto-generated orders start in `DRAFT` status per [Feature 7 — Maintain Supplier Orders](feature-7-maintain-supplier-orders.md))
+* Dock truck check-in and receiving ([Feature 13 — Receive Supplier Shipments](feature-13-receive-supplier-shipments.md))
+* Predictive demand forecasting based on historical sales trends or seasonal adjustments
 

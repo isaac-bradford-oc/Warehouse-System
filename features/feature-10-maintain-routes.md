@@ -39,8 +39,6 @@
 * **Independent test:** Attempt deletion of a route with an active in-transit delivery (blocked); deactivate an idle route (succeeds).  
 * **Acceptance scenarios:** see [US-10.3](#us-103--delete--deactivate-delivery-route) under Acceptance Criteria.
 
-*(Note: Real-time route execution, manifest generation, and proof-of-delivery logging are specified in [Feature 16 — Ship and Deliver Customer Orders](feature-16-ship-and-deliver-customer-orders.md)).*
-
 ---
 
 ## Requirements
@@ -54,6 +52,95 @@
 - **FR-005**: System MUST maintain normalized customer stops in `route_stops`, enforcing unique stop sequences within a route.
 - **FR-006**: System MUST prevent deletion of any route currently assigned to an active, in-transit shipment run.
 - **FR-007**: System MUST provide immediate feedback with clear confirmation or inline validation error messages.
+
+---
+
+## Data Ownership & Isolation
+
+Routes and route stops belong to the tenant company and origin warehouse.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/routes` returns routes where `company_id = req.user.companyId` and `warehouse_id = req.user.warehouseId`. |
+| **Write scope** | Editing is permitted only for routes matching `req.user.companyId`. |
+| **Create scope** | New routes automatically associate with `req.user.companyId` and origin `warehouse_id`. |
+| **Cross-user access** | Accessing a route outside the user's tenant/facility returns `404 Not Found`. |
+| **UI scope** | Dispatch rosters and driver mobile views only show routes belonging to the active warehouse. |
+| **Implementation** | Centralized query helper `getAccessibleRouteOrNull(req, routeId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/routes` | Yes | `office manager`, `company admin`, `driver` | List routes for facility |
+| `GET` | `/warehouse/routes/:id` | Yes | `office manager`, `company admin`, `driver` | Get route details and stop sequence |
+| `POST` | `/warehouse/routes` | Yes | `office manager`, `company admin` | Create delivery route with stops |
+| `PUT` | `/warehouse/routes/:id` | Yes | `office manager`, `company admin` | Update route code, drivers, or stops |
+| `DELETE` | `/warehouse/routes/:id` | Yes | `office manager`, `company admin` | Deactivate or delete route |
+
+**Create Request Body (`POST /warehouse/routes`):**
+```json
+{
+  "warehouse_id": 2,
+  "route_code": "RTE-AUS-01",
+  "route_name": "Austin Metro Morning",
+  "primary_driver_id": 50,
+  "secondary_driver_id": null,
+  "stops": [
+    { "customer_id": 5, "stop_sequence": 1, "estimated_transit_minutes": 25 },
+    { "customer_id": 8, "stop_sequence": 2, "estimated_transit_minutes": 15 }
+  ]
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 12,
+  "company_id": 1,
+  "warehouse_id": 2,
+  "route_code": "RTE-AUS-01",
+  "route_name": "Austin Metro Morning",
+  "primary_driver_id": 50,
+  "secondary_driver_id": null,
+  "status": "ACTIVE",
+  "stops": [
+    { "id": 1, "customer_id": 5, "stop_sequence": 1, "estimated_transit_minutes": 25 },
+    { "id": 2, "customer_id": 8, "stop_sequence": 2, "estimated_transit_minutes": 15 }
+  ],
+  "created_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Assigned worker Marcus Johnson does not have the DRIVER role"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Delivery Routes] — route name `routes`
+- **Heading:** **Delivery Routes & Sequences**
+- **Warehouse Filter:** `<v-select>` facility selector
+- **Primary action:** **+ Create Route** (`oc-cta`) opens dialog with:
+  - `route_code`, `route_name`, `primary_driver_id` (filtered by DRIVER role), `secondary_driver_id`
+  - Stops Sequencer: Add customer, reorder stops up/down, estimated drive time
+  - **Save Route** (`oc-cta`) and **Cancel** buttons
+- **Data Table:** `<v-data-table>` displaying columns:
+  - Route Code, Name, Primary Driver, Stop Count, Status Chip
+  - Row Actions:
+    - **View Route** icon (`aria-label="View route"`)
+    - **Edit Route** icon (`aria-label="Edit route"`)
+    - **Deactivate** icon (`aria-label="Deactivate route"`)
+- **Empty state:** **"No delivery routes configured for this warehouse. Create your first delivery route."**
+- **Loading state:** Skeleton loader
+- **Error state:** `<v-alert type="error">` displaying API error message
 
 ---
 
@@ -164,3 +251,21 @@
 * **When** the office manager attempts to delete route "RTE-AUS-01"
 * **Then** the system rejects the deletion
 * **And** displays an error message "Cannot delete route: 3 shipments are currently in transit on this route"
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-007** satisfied)
+* [ ] Database tables `routes` and `route_stops` created with driver role verification
+* [ ] API endpoints `/warehouse/routes` enforce tenant scoping and sequence uniqueness
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+* [ ] Cross-tenant access returns `404 Not Found`
+
+---
+
+## Out of Scope
+
+* Real-time GPS truck telematics tracking
+* Turn-by-turn navigation mapping integrations (Google Maps / Mapbox)
+* Bill of Lading generation and customer delivery confirmation ([Feature 16 — Ship and Deliver Customer Orders](feature-16-ship-and-deliver-customer-orders.md))

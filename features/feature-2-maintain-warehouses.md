@@ -54,6 +54,83 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Warehouses belong to a specific tenant company (`company_id`).
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/warehouses` returns only warehouses where `company_id = req.user.companyId`. |
+| **Write scope** | Updates/deletions apply only if the warehouse belongs to `req.user.companyId`. |
+| **Create scope** | New warehouse rows automatically inherit `company_id = req.user.companyId`. |
+| **Cross-user access** | Accessing a warehouse belonging to another tenant returns `404 Not Found` (never `403`). |
+| **UI scope** | Only Company Admins and Office Managers belonging to the tenant see the facility in dropdowns. |
+| **Implementation** | Centralized query helper `getAccessibleWarehouseOrNull(req, warehouseId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/warehouses` | Yes | `company admin`, `office manager` | List warehouses for authenticated company |
+| `GET` | `/warehouse/warehouses/:id` | Yes | `company admin`, `office manager` | Get single warehouse details |
+| `POST` | `/warehouse/warehouses` | Yes | `company admin` | Create a new warehouse facility |
+| `PUT` | `/warehouse/warehouses/:id` | Yes | `company admin` | Update warehouse details |
+| `DELETE` | `/warehouse/warehouses/:id` | Yes | `company admin` | Delete empty warehouse or deactivate |
+
+**Create Request Body (`POST /warehouse/warehouses`):**
+```json
+{
+  "warehouse_code": "DAL-01",
+  "warehouse_name": "Dallas North Hub",
+  "warehouse_address": "450 Industrial Parkway, Dallas, TX 75001"
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 2,
+  "company_id": 1,
+  "warehouse_code": "DAL-01",
+  "warehouse_name": "Dallas North Hub",
+  "warehouse_address": "450 Industrial Parkway, Dallas, TX 75001",
+  "status": "ACTIVE",
+  "created_at": "2026-11-10T12:00:00.000Z",
+  "updated_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Warehouse code DAL-01 is already in use for your company"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Warehouses Management] — route name `warehouses`
+- **Heading:** **Company Warehouses**
+- **Primary action:** **+ Add Warehouse** (`oc-cta`) opens `<v-dialog>` with:
+  - `warehouse_code` text input (e.g. `DAL-01`)
+  - `warehouse_name` text input
+  - `warehouse_address` text input
+  - **Save Warehouse** (`oc-cta`) and **Cancel** buttons
+- **Data Table:** `<v-data-table>` displaying columns:
+  - Code, Name, Address, Status (`<v-chip color="green">Active</v-chip>`)
+  - Row Actions:
+    - **Edit** icon (`aria-label="Edit warehouse"`)
+    - **Delete** icon (`aria-label="Delete warehouse"`)
+- **Empty state:** **"No warehouses configured yet. Add your first warehouse facility."**
+- **Loading state:** Skeleton loader while fetching records
+- **Error state:** `<v-alert type="error">` displaying API error message
+
+---
+
 ## Key Entities
 
 - **Warehouse**: Physical distribution center or facility tied to a parent company, having a unique code within the company, facility name, address, and operational status (`ACTIVE` | `INACTIVE`).
@@ -144,3 +221,21 @@
 * **Then** the system rejects the deletion
 * **And** displays an error message "Cannot delete warehouse: active inventory exists. Please transfer stock or deactivate the facility instead"
 * **And** the warehouse record remains active
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-006** satisfied)
+* [ ] Database table `warehouses` created with compound unique index `(company_id, warehouse_code)`
+* [ ] API endpoints `/warehouse/warehouses` enforce tenant scoping and role guards
+* [ ] Gherkin acceptance criteria verified by automated tests
+* [ ] Out-of-tenant access attempts return `404 Not Found`
+
+---
+
+## Out of Scope
+
+* Aisles, racks, slots, and bin layout design ([Feature 4 — Maintain Inventory Locations](feature-4-maintain-inventory.md))
+* Warehouse worker assignment ([Feature 5 — Maintain Workers](feature-5-maintain-workers.md))
+* Physical GPS geolocation and geofencing

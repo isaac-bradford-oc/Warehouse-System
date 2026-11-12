@@ -70,6 +70,86 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Putaway tasks and bin stock movements are strictly scoped to the tenant company and warehouse facility.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/putaway/tasks` returns tasks where the underlying receipt and warehouse belong to `req.user.companyId` and `req.user.warehouseId`. |
+| **Write scope** | Executing putaway or bin transfers is restricted to `stocker`, `office manager`, and `company admin` assigned to the facility. |
+| **Bin isolation** | Barcode verification strictly requires scanned bins to exist within the active warehouse. Bins belonging to another warehouse cannot be scanned. |
+| **Cross-user access** | Accessing putaway tasks or inventory movements belonging to another tenant or warehouse returns `404 Not Found`. |
+| **UI scope** | Stockers only see putaway queues and inventory bins associated with their assigned facility. |
+| **Implementation** | Centralized query helper `getAccessiblePutawayTaskOrNull(req, taskId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/putaway/tasks` | Yes | `stocker`, `office manager`, `company admin` | List pending and in-progress putaway tasks |
+| `GET` | `/warehouse/putaway/tasks/:id` | Yes | `stocker`, `office manager`, `company admin` | Get task details, target bin recommendation, SKU, and staged quantity |
+| `POST` | `/warehouse/putaway/confirm` | Yes | `stocker`, `office manager`, `company admin` | Validate scanned barcodes, increment bin stock, and complete task |
+| `POST` | `/warehouse/inventory/transfer` | Yes | `stocker`, `office manager`, `company admin` | Transfer stock between bins |
+
+**Putaway Confirmation Request Body (`POST /warehouse/putaway/confirm`):**
+```json
+{
+  "task_id": 401,
+  "scanned_bin_barcode": "BIN-DAL01-A01-S01-B01",
+  "scanned_item_barcode": "00012345678905",
+  "quantity_cases": 25
+}
+```
+
+**Success Response (`200 OK`):**
+```json
+{
+  "task_id": 401,
+  "status": "COMPLETED",
+  "confirmed_bin_id": 52,
+  "item_id": 101,
+  "quantity_cases_stocked": 25,
+  "bin_current_quantity": 25,
+  "completed_at": "2026-11-10T15:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Scanned location BIN-02 does not match assigned destination BIN-01. Please move to assigned location."
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Stocker Mobile Putaway & Stocking] — route name `putaway`
+- **Heading:** **Mobile Stocking & Putaway**
+- **Header Information:** Warehouse indicator, stocker name, pending tasks counter chip
+- **Task List View:** `<v-card>` list displaying:
+  - SKU, Item Name, Case Count, Recommended Location (`Aisle - Shelf - Bin`), Priority Badge
+  - **Start Putaway** action button on task card
+- **Active Putaway Execution Card:**
+  - Large High-Contrast Target Display: Aisle, Shelf, Bin
+  - Staged Goods Summary: Item Name, SKU, Cases to Stock
+  - Scanned Bin Barcode Input: `<v-text-field>` with autofocus and hardware scanner wedge listener
+  - Scanned Case UPC Input: `<v-text-field>` with autofocus after bin scan
+  - Quantity Field: `<v-text-field type="number">` pre-filled with remaining task cases
+  - **Confirm Putaway** button (`oc-cta`)
+- **Bin-to-Bin Transfer Modal:**
+  - Scan Source Bin, Scan Item Barcode, Scan Target Bin, Enter Transfer Quantity, **Confirm Transfer** (`oc-cta`)
+- **Empty state:** **"No pending putaway tasks for this warehouse. All received shipments are stocked."**
+- **Loading state:** Skeleton task cards
+- **Error / Mismatch Alert:** Modal alert dialog and audible vibration alert on barcode mismatch
+- **Responsive design:** Optimized for handheld barcode mobile terminals (5-inch screen view) and tablets
+
+---
+
 ## Key Entities
 
 - **Putaway Task**: Work assignment directing a warehouse stocker to transport accepted dock goods to an assigned slot and bin.
@@ -172,4 +252,24 @@
 * **Then** the system rejects the transfer
 * **And** displays an error message "Cannot transfer 15 cases: source bin BIN-RES-01 only contains 10 cases"
 * **And** bin balances remain unchanged
+
+---
+
+## Definition of Done
+
+* [ ] Stocker putaway backend APIs and mobile frontend UI implemented per this spec (**FR-001** – **FR-007** satisfied)
+* [ ] Database table `putaway_tasks` created with foreign keys and status constraints
+* [ ] Barcode scanning rigorously validates both destination bin barcode and item UPC barcode
+* [ ] Confirmed putaways atomically increment bin `current_quantity`, increment unreserved stock, and decrement dock staging
+* [ ] Over-capacity checks enforce `current_quantity <= max_capacity_units`
+* [ ] Cross-tenant access returns `404 Not Found`
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+
+---
+
+## Out of Scope
+
+* Automated robotic Automated Storage and Retrieval Systems (ASRS) conveyor integration
+* Customer order picking ([Feature 15 — Pick Customer Orders](feature-15-pick-customer-orders.md))
+* Pallet wrapping, dimensioning, and warehouse weight sensor calibrations
 

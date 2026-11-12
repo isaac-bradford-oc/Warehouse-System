@@ -48,8 +48,6 @@
 * **Independent test:** Cancel a pending or released order; verify status changes to `"CANCELLED"` and inventory reservations are freed.  
 * **Acceptance scenarios:** see [US-9.4](#us-94--cancel-customer-order) under Acceptance Criteria.
 
-*(Note: Floor execution workflows have been separated into dedicated operational features: [Feature 15 — Pick Customer Orders](feature-15-pick-customer-orders.md) for warehouse picking and bin scanning, and [Feature 16 — Ship and Deliver Customer Orders](feature-16-ship-and-deliver-customer-orders.md) for BOL generation, truck dispatch, and driver delivery confirmation).*
-
 ---
 
 ## Requirements
@@ -64,6 +62,105 @@
 - **FR-006**: Releasing an order (`RELEASED_FOR_PICKING`) MUST verify that on-hand unreserved inventory is sufficient for all line items.
 - **FR-007**: System MUST generate a unique, non-repeating `order_number` (e.g., `SO-202611-0001`).
 - **FR-008**: System MUST display unambiguous confirmation and actionable validation errors.
+
+---
+
+## Data Ownership & Isolation
+
+Customer sales orders belong to the tenant company and fulfillment warehouse.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/customer-orders` returns orders where `company_id = req.user.companyId` and `warehouse_id = req.user.warehouseId`. |
+| **Write scope** | Editing is permitted only for orders matching `req.user.companyId` and currently in `PENDING` status. |
+| **Create scope** | New orders automatically associate with `req.user.companyId` and authorizer `req.user.id`. |
+| **Cross-user access** | Accessing an order belonging to another tenant or warehouse returns `404 Not Found`. |
+| **UI scope** | Users only see customer orders targeted for their authorized facility. |
+| **Implementation** | Centralized query helper `getAccessibleCustomerOrderOrNull(req, orderId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/customer-orders` | Yes | `office manager`, `company admin` | List customer sales orders |
+| `GET` | `/warehouse/customer-orders/:id` | Yes | `office manager`, `company admin` | Get order and line items |
+| `POST` | `/warehouse/customer-orders` | Yes | `office manager`, `company admin` | Create pending sales order |
+| `PUT` | `/warehouse/customer-orders/:id` | Yes | `office manager`, `company admin` | Update line items on pending order |
+| `POST` | `/warehouse/customer-orders/:id/release` | Yes | `office manager`, `company admin` | Release order for floor picking |
+| `POST` | `/warehouse/customer-orders/:id/cancel` | Yes | `office manager`, `company admin` | Cancel order & release reservations |
+
+**Create Request Body (`POST /warehouse/customer-orders`):**
+```json
+{
+  "warehouse_id": 2,
+  "customer_id": 5,
+  "requested_delivery_date": "2026-11-18",
+  "items": [
+    {
+      "item_id": 101,
+      "quantity_ordered": 400,
+      "unit_price": 1.25
+    }
+  ]
+}
+```
+
+**Success Response (`201 Created` / `200 OK`):**
+```json
+{
+  "id": 22,
+  "order_number": "SO-202611-0001",
+  "company_id": 1,
+  "warehouse_id": 2,
+  "customer_id": 5,
+  "authorizer_worker_id": 4,
+  "order_date": "2026-11-10",
+  "requested_delivery_date": "2026-11-18",
+  "total_amount": 500.00,
+  "status": "PENDING",
+  "items": [
+    {
+      "id": 110,
+      "item_id": 101,
+      "quantity_ordered": 400,
+      "quantity_picked": 0,
+      "quantity_shipped": 0,
+      "unit_price": 1.25
+    }
+  ],
+  "created_at": "2026-11-10T12:00:00.000Z"
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Cannot create order: Order total ($500.00) exceeds customer available credit ($200.00)"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Customer Sales Orders] — route name `customer-orders`
+- **Heading:** **Customer Sales Orders**
+- **Warehouse & Status Filters:** `<v-select>` facility selector; filter chips for `PENDING`, `RELEASED_FOR_PICKING`, `PICKED`, `SHIPPED`, `DELIVERED`, `CANCELLED`
+- **Primary action:** **+ Create Sales Order** (`oc-cta`) opens order modal with:
+  - Customer selector (`customer_id`), fulfillment warehouse, requested delivery date
+  - Line items dynamic table: SKU autocomplete, ordered unit count, unit price, line total
+  - **Save Order** (`oc-cta`) and **Cancel** buttons
+- **Data Table:** `<v-data-table>` displaying columns:
+  - SO Number, Customer Name, Order Date, Delivery Target, Total Amount ($), Status Chip
+  - Row Actions:
+    - **View Details** icon (`aria-label="View order"`)
+    - **Release for Picking** button / icon (`aria-label="Release order"`, active only if PENDING)
+    - **Cancel** icon (`aria-label="Cancel order"`)
+- **Empty state:** **"No customer orders found for this warehouse. Create your first sales order."**
+- **Loading state:** Skeleton rows
+- **Error state:** `<v-alert type="error">` displaying API error message
 
 ---
 
@@ -183,3 +280,21 @@
 * **Then** the system rejects the cancellation
 * **And** displays an error message "Cannot cancel order: Shipment is currently in transit. Please process as a customer return upon delivery"
 * **And** the order remains in `"SHIPPED"` status
+
+---
+
+## Definition of Done
+
+* [ ] Backend and frontend implemented per this spec (**FR-001** – **FR-008** satisfied)
+* [ ] Database tables `customer_orders` and `customer_order_items` created with state constraints
+* [ ] API endpoints `/warehouse/customer-orders` enforce tenant scoping and credit validation
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+* [ ] Cross-tenant access returns `404 Not Found`
+
+---
+
+## Out of Scope
+
+* Floor picking execution and bin barcode scanning ([Feature 15 — Pick Customer Orders](feature-15-pick-customer-orders.md))
+* Bill of Lading generation and truck dispatch ([Feature 16 — Ship and Deliver Customer Orders](feature-16-ship-and-deliver-customer-orders.md))
+* Customer invoice generation and payment remittance

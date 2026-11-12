@@ -84,6 +84,86 @@
 
 ---
 
+## Data Ownership & Isolation
+
+Customer order pick tasks and bin deductions are strictly scoped to the tenant company and active warehouse.
+
+| Rule | Requirement |
+|---|---|
+| **Read scope** | `GET /warehouse/picking/tasks` returns pick tasks for customer orders belonging to `req.user.companyId` and `req.user.warehouseId`. |
+| **Write scope** | Picking confirmation and shortage logging are restricted to `picker`, `office manager`, and `company admin` assigned to the facility. |
+| **Order & Bin isolation** | Pick tasks only direct pickers to bins within the active warehouse. Orders released in other facilities are isolated and inaccessible. |
+| **Cross-user access** | Accessing pick tasks or customer orders belonging to another tenant or warehouse returns `404 Not Found`. |
+| **UI scope** | Pickers only see released orders and pick routes for their assigned warehouse. |
+| **Implementation** | Centralized query helper `getAccessiblePickTaskOrNull(req, taskId)`. |
+
+---
+
+## API Requirements
+
+| Method | Endpoint | Auth | Role | Purpose |
+|---|---|---|---|---|
+| `GET` | `/warehouse/picking/tasks` | Yes | `picker`, `office manager`, `company admin` | List pick tasks for released customer orders |
+| `GET` | `/warehouse/picking/orders/:orderId` | Yes | `picker`, `office manager`, `company admin` | Get sequenced pick route for an order |
+| `POST` | `/warehouse/picking/confirm` | Yes | `picker`, `office manager`, `company admin` | Verify barcodes, confirm item pick, decrement bin inventory |
+| `POST` | `/warehouse/picking/short` | Yes | `picker`, `office manager`, `company admin` | Log pick shortage / empty bin and file discrepancy report |
+| `POST` | `/warehouse/picking/stage` | Yes | `picker`, `office manager`, `company admin` | Scan outbound staging lane and mark order `PICKED` |
+
+**Pick Confirmation Request Body (`POST /warehouse/picking/confirm`):**
+```json
+{
+  "task_id": 501,
+  "scanned_bin_barcode": "BIN-DAL01-A01-S01-B01",
+  "scanned_item_barcode": "012345678905",
+  "quantity_picked": 12
+}
+```
+
+**Success Response (`200 OK`):**
+```json
+{
+  "task_id": 501,
+  "order_id": 201,
+  "status": "COMPLETED",
+  "quantity_picked": 12,
+  "order_fully_picked": false,
+  "next_task_id": 502
+}
+```
+
+**Error Response (`400 Bad Request` / `404 Not Found` / `409 Conflict`):**
+```json
+{
+  "message": "Scanned item barcode does not match expected SKU DRK-COLA-01"
+}
+```
+
+---
+
+## Screen Requirements
+
+### [View: Order Picker Handheld] — route name `picking`
+- **Heading:** **Mobile Order Picking**
+- **Header Bar:** Facility indicator, picker name, customer name, order number, progress indicator (`Item X of Y`)
+- **Active Pick Card:**
+  - High-Contrast Target Location: `Aisle — Rack — Shelf — Bin` displayed in large bold type
+  - SKU & Item Title with packaging description
+  - Barcode Input 1: **Scan Bin Barcode** (`autofocus`, green checkmark on valid scan)
+  - Barcode Input 2: **Scan Item Barcode** (activated after bin confirmation)
+  - Picked Quantity Input: `<v-text-field type="number">` prefilled with requested count
+  - **Confirm Pick** button (`oc-cta`)
+  - **Report Shortage** text button (opens modal to record actual bin count and reason)
+- **Staging Completion Dialog:**
+  - Prompt: "All items picked! Deposit cart into outbound staging lane."
+  - Staging Location Barcode Input: Scan lane barcode (e.g., `STAGE-LANE-03`)
+  - **Complete & Stage Order** button (`oc-cta`)
+- **Empty state:** **"No customer orders are currently queued for picking in this warehouse."**
+- **Loading state:** Skeleton pick task card
+- **Mismatch Alert:** Modal alert dialog and audible error chime on incorrect barcode scan
+- **Responsive design:** Optimized for mobile handheld scanner terminals
+
+---
+
 ## Key Entities
 
 - **Pick Task**: Individual picking directive instructing an order picker to retrieve a specific SKU and quantity from a designated bin.
@@ -205,4 +285,25 @@
 * **Then** the system blocks staging completion
 * **And** displays an error message "Cannot stage order: 1 line item is still pending pick"
 * **And** the order status remains `"RELEASED_FOR_PICKING"`
+
+---
+
+## Definition of Done
+
+* [ ] Picker mobile interface and backend APIs implemented per this spec (**FR-001** – **FR-007** satisfied)
+* [ ] Database table `pick_tasks` created with foreign keys and status constraints
+* [ ] Pick list traversal algorithm sorts items sequentially by aisle, rack, shelf, bin
+* [ ] Barcode scanning rigorously verifies both bin barcode and item barcode
+* [ ] Confirmed pick decrements bin inventory, increments order line `quantity_picked`, and decrements total reserved stock
+* [ ] Short-picks adjust bin balance and automatically generate report in [Feature 11 — Maintain Reports](feature-11-maintain-reports.md)
+* [ ] Cross-tenant access returns `404 Not Found`
+* [ ] Gherkin acceptance criteria verified by automated integration tests
+
+---
+
+## Out of Scope
+
+* Automated packing slip printing and carton box sizing calculation
+* Shipping Bill of Lading generation and truck dispatch ([Feature 16 — Ship and Deliver Customer Orders](feature-16-ship-and-deliver-customer-orders.md))
+* Batch pick wave clustering across multiple customer orders simultaneously
 
